@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DealCard } from "@/components/DealCard";
 import { FilterBar } from "@/components/FilterBar";
 import { getSeedData } from "@/lib/db/seed";
-import { Loader2, RefreshCw, Plus, Search } from "lucide-react";
+import { Loader2, RefreshCw, Plus, Search, AlertCircle } from "lucide-react";
 import type { DealWithDetails, Category, Condition } from "@/types";
 
 interface AppliedFilters {
@@ -112,21 +112,30 @@ export default function DealsPage() {
     setFilters(newFilters);
   };
 
+  const [scanError, setScanError] = useState(false);
+
   const handleScan = async () => {
     setScanning(true);
     setScanResult(null);
+    setScanError(false);
     try {
       const res = await fetch("/api/cron/refresh");
       const data = await res.json();
       if (res.ok) {
-        setScanResult(
-          `Found ${data.scraped} listings, saved ${data.saved} new deals. Refresh the page to see them.`
-        );
+        const parts = [`Scraped ${data.scraped} listings from ${data.providers?.join(", ") || "providers"}`];
+        if (data.saved > 0) parts.push(`${data.saved} new profitable deals found`);
+        if (data.analyzed > 0) parts.push(`${data.analyzed} analyzed by AI`);
+        if (data.errors > 0) parts.push(`${data.errors} errors`);
+        parts.push("Refresh the page to see results.");
+        setScanResult(parts.join(". "));
+        if (data.errors > 0) setScanError(true);
       } else {
-        setScanResult(data.error || "Scan failed");
+        setScanError(true);
+        setScanResult(`Error ${res.status}: ${data.error || "Scan failed"}. Check your ANTHROPIC_API_KEY and CRON_SECRET in Vercel environment variables.`);
       }
-    } catch {
-      setScanResult("Network error. Try again.");
+    } catch (err) {
+      setScanError(true);
+      setScanResult(`Network error: ${err instanceof Error ? err.message : "Could not reach server"}. Make sure the app is deployed and running.`);
     } finally {
       setScanning(false);
     }
@@ -169,8 +178,9 @@ export default function DealsPage() {
       </div>
 
       {scanResult && (
-        <div className="mb-4 rounded-lg border border-gold/20 bg-gold/5 px-4 py-3 text-sm text-muted-foreground">
-          {scanResult}
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${scanError ? "border-red-500/20 bg-red-500/5 text-red-400" : "border-gold/20 bg-gold/5 text-muted-foreground"}`}>
+          {scanError && <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+          <p>{scanResult}</p>
         </div>
       )}
 

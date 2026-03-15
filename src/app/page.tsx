@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { StatsCard } from "@/components/StatsCard";
+import { DealCard } from "@/components/DealCard";
 import { getSeedData } from "@/lib/db/seed";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -10,12 +11,12 @@ import {
   Watch,
   ShoppingBag,
   DollarSign,
-  BarChart3,
   ArrowRight,
   Loader2,
   RefreshCw,
   Plus,
   Search,
+  AlertCircle,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -49,21 +50,30 @@ export default function Dashboard() {
     (d) => d!.brand.category === "handbag"
   ).length;
 
+  const [scanError, setScanError] = useState(false);
+
   const handleScan = async () => {
     setScanning(true);
     setScanResult(null);
+    setScanError(false);
     try {
       const res = await fetch("/api/cron/refresh");
       const data = await res.json();
       if (res.ok) {
-        setScanResult(
-          `Found ${data.scraped} listings, saved ${data.saved} new deals. Refresh the page to see them.`
-        );
+        const parts = [`Scraped ${data.scraped} listings from ${data.providers?.join(", ") || "providers"}`];
+        if (data.saved > 0) parts.push(`${data.saved} new profitable deals found`);
+        if (data.analyzed > 0) parts.push(`${data.analyzed} analyzed by AI`);
+        if (data.errors > 0) parts.push(`${data.errors} errors`);
+        parts.push("Refresh the page to see results.");
+        setScanResult(parts.join(". "));
+        if (data.errors > 0) setScanError(true);
       } else {
-        setScanResult(data.error || "Scan failed");
+        setScanError(true);
+        setScanResult(`Error ${res.status}: ${data.error || "Scan failed"}. Check your ANTHROPIC_API_KEY and CRON_SECRET in Vercel environment variables.`);
       }
-    } catch {
-      setScanResult("Network error. Try again.");
+    } catch (err) {
+      setScanError(true);
+      setScanResult(`Network error: ${err instanceof Error ? err.message : "Could not reach server"}. Make sure the app is deployed and running.`);
     } finally {
       setScanning(false);
     }
@@ -150,7 +160,10 @@ export default function Dashboard() {
             </Link>
           </div>
           {scanResult && (
-            <p className="mt-4 text-sm text-muted-foreground">{scanResult}</p>
+            <div className={`mt-4 text-sm flex items-start gap-2 justify-center ${scanError ? "text-red-400" : "text-muted-foreground"}`}>
+              {scanError && <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+              <p>{scanResult}</p>
+            </div>
           )}
           {scanning && (
             <p className="mt-4 text-xs text-muted-foreground">
@@ -191,24 +204,23 @@ export default function Dashboard() {
             </div>
           </div>
           {scanResult && (
-            <p className="mb-3 text-sm text-muted-foreground">{scanResult}</p>
+            <div className={`mb-3 text-sm flex items-start gap-2 ${scanError ? "text-red-400" : "text-muted-foreground"}`}>
+              {scanError && <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+              <p>{scanResult}</p>
+            </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {dealsWithDetails.slice(0, 6).map((deal) => {
-              // Lazy import to avoid circular issues
-              const { DealCard } = require("@/components/DealCard");
-              return (
-                <DealCard
-                  key={deal!.listing.id}
-                  deal={{
-                    listing: deal!.listing,
-                    model: deal!.model,
-                    brand: deal!.brand,
-                    valuation: deal!.valuation,
-                  }}
-                />
-              );
-            })}
+            {dealsWithDetails.slice(0, 6).map((deal) => (
+              <DealCard
+                key={deal!.listing.id}
+                deal={{
+                  listing: deal!.listing,
+                  model: deal!.model,
+                  brand: deal!.brand,
+                  valuation: deal!.valuation,
+                }}
+              />
+            ))}
           </div>
         </div>
       )}

@@ -113,7 +113,11 @@ export class EbayProvider implements DataProvider {
   private async scrapeSearch(item: SearchItem): Promise<ListingData[]> {
     const query = encodeURIComponent(`${item.brand} ${item.model}`);
     // Buy It Now only, sorted by newly listed
-    const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_sacat=0&LH_BIN=1&_sop=10&_ipg=60`;
+    // _sacat=14324 = Wristwatches, 169291 = Women's Bags & Handbags
+    // _udlo = min price to skip cheap fakes/accessories
+    const categoryId = item.category === 'watch' ? '14324' : '169291';
+    const minPrice = item.category === 'watch' ? '500' : '200';
+    const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_sacat=${categoryId}&LH_BIN=1&_sop=10&_ipg=120&_udlo=${minPrice}`;
 
     const response = await fetch(url, {
       headers: {
@@ -165,6 +169,14 @@ export class EbayProvider implements DataProvider {
           return; // skip irrelevant results
         }
 
+        // Skip accessories, parts, straps, boxes (not actual items)
+        const skipWords = ['strap', 'band', 'bracelet only', 'clasp', 'bezel insert', 'dial only',
+          'crown', 'crystal', 'parts', 'for parts', 'repair', 'manual', 'booklet', 'box only',
+          'dust bag only', 'wallet', 'card holder', 'charm', 'keychain', 'scarf'];
+        if (skipWords.some((w) => titleLower.includes(w))) {
+          return; // skip accessories and parts
+        }
+
         listings.push({
           source: 'eBay',
           sourceUrl: cleanUrl,
@@ -188,8 +200,8 @@ export class EbayProvider implements DataProvider {
     // Scrape eBay completed/sold listings for price history
     try {
       const query = encodeURIComponent(`${brand} ${model}`);
-      // LH_Complete=1&LH_Sold=1 = completed+sold items
-      const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_sacat=0&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=30`;
+      // LH_Complete=1&LH_Sold=1 = completed+sold items, _sacat=14324 for watches
+      const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_sacat=14324&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=60&_udlo=500`;
 
       const response = await fetch(url, {
         headers: {
