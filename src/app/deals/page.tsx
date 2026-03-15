@@ -4,8 +4,9 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { DealCard } from "@/components/DealCard";
 import { FilterBar } from "@/components/FilterBar";
+import { ScanProgress } from "@/components/ScanProgress";
 import { getSeedData } from "@/lib/db/seed";
-import { Loader2, RefreshCw, Plus, Search, AlertCircle } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import type { DealWithDetails, Category, Condition } from "@/types";
 
 interface AppliedFilters {
@@ -30,9 +31,6 @@ export default function DealsPage() {
     search: "",
     sort: "highest_profit",
   });
-
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<string | null>(null);
 
   const { brands, models, listings, valuations } = getSeedData();
 
@@ -112,35 +110,6 @@ export default function DealsPage() {
     setFilters(newFilters);
   };
 
-  const [scanError, setScanError] = useState(false);
-
-  const handleScan = async () => {
-    setScanning(true);
-    setScanResult(null);
-    setScanError(false);
-    try {
-      const res = await fetch("/api/cron/refresh");
-      const data = await res.json();
-      if (res.ok) {
-        const parts = [`Scraped ${data.scraped} listings from ${data.providers?.join(", ") || "providers"}`];
-        if (data.saved > 0) parts.push(`${data.saved} new profitable deals found`);
-        if (data.analyzed > 0) parts.push(`${data.analyzed} analyzed by AI`);
-        if (data.errors > 0) parts.push(`${data.errors} errors`);
-        parts.push("Refresh the page to see results.");
-        setScanResult(parts.join(". "));
-        if (data.errors > 0) setScanError(true);
-      } else {
-        setScanError(true);
-        setScanResult(`Error ${res.status}: ${data.error || "Scan failed"}. Check your ANTHROPIC_API_KEY and CRON_SECRET in Vercel environment variables.`);
-      }
-    } catch (err) {
-      setScanError(true);
-      setScanResult(`Network error: ${err instanceof Error ? err.message : "Could not reach server"}. Make sure the app is deployed and running.`);
-    } finally {
-      setScanning(false);
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
@@ -153,21 +122,7 @@ export default function DealsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="inline-flex items-center gap-2 rounded-lg bg-gold px-4 py-2.5 text-sm font-medium text-black hover:bg-gold-light transition-colors disabled:opacity-50"
-          >
-            {scanning ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Scanning...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4" /> Scan Now
-              </>
-            )}
-          </button>
+          <ScanProgress variant="small" />
           <Link
             href="/add"
             className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
@@ -176,13 +131,6 @@ export default function DealsPage() {
           </Link>
         </div>
       </div>
-
-      {scanResult && (
-        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${scanError ? "border-red-500/20 bg-red-500/5 text-red-400" : "border-gold/20 bg-gold/5 text-muted-foreground"}`}>
-          {scanError && <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
-          <p>{scanResult}</p>
-        </div>
-      )}
 
       {allDeals.length > 0 && (
         <FilterBar
@@ -198,15 +146,9 @@ export default function DealsPage() {
             No deals yet
           </p>
           <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
-            Click &quot;Scan Now&quot; to scrape eBay and Chrono24 for real listings,
-            or add a deal manually using the + Add Deal button.
+            Click &quot;Rescan&quot; above to scrape eBay, Chrono24, Bob&apos;s Watches,
+            and Reddit for real listings, or add a deal manually.
           </p>
-          {scanning && (
-            <p className="text-xs text-muted-foreground">
-              Scraping 30+ models from eBay and Chrono24, then analyzing each
-              with Claude AI. This may take a few minutes...
-            </p>
-          )}
         </div>
       ) : filteredDeals.length === 0 ? (
         <div className="text-center py-16">
