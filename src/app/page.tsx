@@ -1,6 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { StatsCard } from "@/components/StatsCard";
-import { DealCard } from "@/components/DealCard";
 import { getSeedData } from "@/lib/db/seed";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -10,9 +12,16 @@ import {
   DollarSign,
   BarChart3,
   ArrowRight,
+  Loader2,
+  RefreshCw,
+  Plus,
+  Search,
 } from "lucide-react";
 
 export default function Dashboard() {
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+
   const { brands, models, listings, valuations } = getSeedData();
 
   const dealsWithDetails = listings
@@ -33,9 +42,6 @@ export default function Dashboard() {
     (sum, d) => sum + d!.valuation.netProfit,
     0
   );
-  const avgRoi =
-    dealsWithDetails.reduce((sum, d) => sum + d!.valuation.roiPercentage, 0) /
-    (totalDeals || 1);
   const watchDeals = dealsWithDetails.filter(
     (d) => d!.brand.category === "watch"
   ).length;
@@ -43,7 +49,27 @@ export default function Dashboard() {
     (d) => d!.brand.category === "handbag"
   ).length;
 
-  const topDeals = dealsWithDetails.slice(0, 6);
+  const handleScan = async () => {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const res = await fetch("/api/cron/refresh");
+      const data = await res.json();
+      if (res.ok) {
+        setScanResult(
+          `Found ${data.scraped} listings, saved ${data.saved} new deals. Refresh the page to see them.`
+        );
+      } else {
+        setScanResult(data.error || "Scan failed");
+      }
+    } catch {
+      setScanResult("Network error. Try again.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const isEmpty = totalDeals === 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -63,63 +89,129 @@ export default function Dashboard() {
         <StatsCard
           title="Active Deals"
           value={totalDeals.toString()}
-          change={12}
+          change={0}
           icon={<TrendingUp className="w-5 h-5" />}
           subtitle="Profitable items found"
         />
         <StatsCard
           title="Potential Profit"
           value={formatCurrency(totalPotentialProfit)}
-          change={8.5}
+          change={0}
           icon={<DollarSign className="w-5 h-5" />}
           subtitle="If all deals are flipped"
         />
         <StatsCard
           title="Watch Deals"
           value={watchDeals.toString()}
-          change={5}
+          change={0}
           icon={<Watch className="w-5 h-5" />}
           subtitle="Underpriced watches"
         />
         <StatsCard
           title="Bag Deals"
           value={bagDeals.toString()}
-          change={15}
+          change={0}
           icon={<ShoppingBag className="w-5 h-5" />}
           subtitle="Underpriced handbags"
         />
       </div>
 
-      {/* Top Deals Section */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-semibold">Top Deals</h2>
-            <p className="text-muted-foreground">
-              Highest profit opportunities right now
-            </p>
+      {/* Empty State / Scan Section */}
+      {isEmpty ? (
+        <div className="mb-8 rounded-2xl border border-border bg-card p-8 text-center">
+          <Search className="mx-auto h-12 w-12 text-gold/50 mb-4" />
+          <h2 className="text-2xl font-semibold mb-2">No Deals Yet</h2>
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+            Scan eBay and Chrono24 to find real underpriced watches and handbags,
+            or add deals manually.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={handleScan}
+              disabled={scanning}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold px-6 py-3 text-sm font-semibold text-black hover:bg-gold-light transition-colors disabled:opacity-50"
+            >
+              {scanning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Scanning
+                  eBay &amp; Chrono24...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" /> Scan for Deals Now
+                </>
+              )}
+            </button>
+            <Link
+              href="/add"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-6 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              <Plus className="h-4 w-4" /> Add Deal Manually
+            </Link>
           </div>
-          <Link
-            href="/deals"
-            className="flex items-center gap-1 text-gold hover:text-gold-light transition-colors font-medium"
-          >
-            View All <ArrowRight className="w-4 h-4" />
-          </Link>
+          {scanResult && (
+            <p className="mt-4 text-sm text-muted-foreground">{scanResult}</p>
+          )}
+          {scanning && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              This may take a few minutes — scraping 30+ models from eBay and
+              Chrono24, then running Claude AI analysis on each...
+            </p>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {topDeals.map((deal) => (
-            <DealCard
-              key={deal!.listing.id}
-              deal={{
-                listing: deal!.listing,
-                model: deal!.model,
-                brand: deal!.brand,
-                valuation: deal!.valuation,
-              }}
-            />
-          ))}
+      ) : (
+        /* Top Deals Section */
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-2xl font-semibold">Top Deals</h2>
+              <p className="text-muted-foreground">
+                Highest profit opportunities right now
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleScan}
+                disabled={scanning}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {scanning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {scanning ? "Scanning..." : "Rescan"}
+              </button>
+              <Link
+                href="/deals"
+                className="flex items-center gap-1 text-gold hover:text-gold-light transition-colors font-medium"
+              >
+                View All <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+          {scanResult && (
+            <p className="mb-3 text-sm text-muted-foreground">{scanResult}</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {dealsWithDetails.slice(0, 6).map((deal) => {
+              // Lazy import to avoid circular issues
+              const { DealCard } = require("@/components/DealCard");
+              return (
+                <DealCard
+                  key={deal!.listing.id}
+                  deal={{
+                    listing: deal!.listing,
+                    model: deal!.model,
+                    brand: deal!.brand,
+                    valuation: deal!.valuation,
+                  }}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -138,6 +230,20 @@ export default function Dashboard() {
           </div>
         </Link>
         <Link
+          href="/add"
+          className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border hover:border-gold/50 transition-all group"
+        >
+          <div className="p-2 rounded-lg bg-gold/10 text-gold group-hover:bg-gold/20 transition-colors">
+            <Plus className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Add a Deal</h3>
+            <p className="text-sm text-muted-foreground">
+              Paste URL or enter manually
+            </p>
+          </div>
+        </Link>
+        <Link
           href="/inventory"
           className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border hover:border-gold/50 transition-all group"
         >
@@ -148,20 +254,6 @@ export default function Dashboard() {
             <h3 className="font-semibold">Inventory</h3>
             <p className="text-sm text-muted-foreground">
               Manage your stock
-            </p>
-          </div>
-        </Link>
-        <Link
-          href="/trends"
-          className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border hover:border-gold/50 transition-all group"
-        >
-          <div className="p-2 rounded-lg bg-gold/10 text-gold group-hover:bg-gold/20 transition-colors">
-            <BarChart3 className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-semibold">Market Trends</h3>
-            <p className="text-sm text-muted-foreground">
-              Price analytics
             </p>
           </div>
         </Link>

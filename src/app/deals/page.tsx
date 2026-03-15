@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { DealCard } from "@/components/DealCard";
 import { FilterBar } from "@/components/FilterBar";
 import { getSeedData } from "@/lib/db/seed";
+import { Loader2, RefreshCw, Plus, Search } from "lucide-react";
 import type { DealWithDetails, Category, Condition } from "@/types";
 
 interface AppliedFilters {
@@ -28,6 +30,9 @@ export default function DealsPage() {
     search: "",
     sort: "highest_profit",
   });
+
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   const { brands, models, listings, valuations } = getSeedData();
 
@@ -107,22 +112,93 @@ export default function DealsPage() {
     setFilters(newFilters);
   };
 
+  const handleScan = async () => {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const res = await fetch("/api/cron/refresh");
+      const data = await res.json();
+      if (res.ok) {
+        setScanResult(
+          `Found ${data.scraped} listings, saved ${data.saved} new deals. Refresh the page to see them.`
+        );
+      } else {
+        setScanResult(data.error || "Scan failed");
+      }
+    } catch {
+      setScanResult("Network error. Try again.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Deal Finder</h1>
-        <p className="text-muted-foreground mt-1">
-          Showing {filteredDeals.length} profitable deals &mdash; only items you
-          can make money on
-        </p>
+      <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Deal Finder</h1>
+          <p className="text-muted-foreground mt-1">
+            {allDeals.length > 0
+              ? `Showing ${filteredDeals.length} profitable deals — only items you can make money on`
+              : "Scan marketplaces to find profitable deals"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="inline-flex items-center gap-2 rounded-lg bg-gold px-4 py-2.5 text-sm font-medium text-black hover:bg-gold-light transition-colors disabled:opacity-50"
+          >
+            {scanning ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Scanning...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" /> Scan Now
+              </>
+            )}
+          </button>
+          <Link
+            href="/add"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            <Plus className="h-4 w-4" /> Add Deal
+          </Link>
+        </div>
       </div>
 
-      <FilterBar
-        onFilterChange={handleFilterChange}
-        brands={uniqueBrands}
-      />
+      {scanResult && (
+        <div className="mb-4 rounded-lg border border-gold/20 bg-gold/5 px-4 py-3 text-sm text-muted-foreground">
+          {scanResult}
+        </div>
+      )}
 
-      {filteredDeals.length === 0 ? (
+      {allDeals.length > 0 && (
+        <FilterBar
+          onFilterChange={handleFilterChange}
+          brands={uniqueBrands}
+        />
+      )}
+
+      {allDeals.length === 0 ? (
+        <div className="text-center py-16">
+          <Search className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
+          <p className="text-muted-foreground text-lg mb-2">
+            No deals yet
+          </p>
+          <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+            Click &quot;Scan Now&quot; to scrape eBay and Chrono24 for real listings,
+            or add a deal manually using the + Add Deal button.
+          </p>
+          {scanning && (
+            <p className="text-xs text-muted-foreground">
+              Scraping 30+ models from eBay and Chrono24, then analyzing each
+              with Claude AI. This may take a few minutes...
+            </p>
+          )}
+        </div>
+      ) : filteredDeals.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-muted-foreground text-lg">
             No deals match your filters. Try adjusting your criteria.

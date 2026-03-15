@@ -8,11 +8,15 @@ export const maxDuration = 300; // 5 minutes max for Vercel
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authorization
+    // Verify authorization — allow same-origin requests (from the app UI)
+    // and cron requests with the secret
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
+    const referer = request.headers.get('referer') || '';
+    const host = request.headers.get('host') || '';
+    const isSameOrigin = referer.includes(host);
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (cronSecret && !isSameOrigin && authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
