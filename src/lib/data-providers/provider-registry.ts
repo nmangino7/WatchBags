@@ -1,5 +1,7 @@
 import type { DataProvider, ListingData, PriceDataPoint } from './types';
 import { mockProvider } from './mock-provider';
+import { ebayProvider } from './ebay-provider';
+import { chrono24Provider } from './chrono24-provider';
 
 // ============================================================================
 // Provider Registry
@@ -69,6 +71,8 @@ class ProviderRegistry {
 
 const registry = new ProviderRegistry();
 registry.registerProvider(mockProvider);
+registry.registerProvider(ebayProvider);
+registry.registerProvider(chrono24Provider);
 
 export const providerRegistry = registry;
 export { ProviderRegistry };
