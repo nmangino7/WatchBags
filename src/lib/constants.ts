@@ -127,6 +127,7 @@ export const NAV_LINKS = [
   { href: '/trends', label: 'Trends' },
   { href: '/watchlist', label: 'Watchlist' },
   { href: '/sales', label: 'Sales' },
+  { href: '/add', label: '+ Add Deal' },
   { href: '/setup', label: 'Setup' },
 ] as const;
 

@@ -414,3 +414,19 @@ export { models as MODELS };
 export { listings as SAMPLE_LISTINGS };
 export { valuations as SAMPLE_VALUATIONS };
 export { priceHistory as SAMPLE_PRICE_HISTORY };
+
+// ============================================================================
+// Mutable helpers — add user-submitted listings at runtime
+// ============================================================================
+
+export function addListing(listing: Listing): void {
+  listings.push(listing);
+}
+
+export function addValuation(valuation: Valuation): void {
+  valuations.push(valuation);
+}
+
+export function addModel(model: Model): void {
+  models.push(model);
+}

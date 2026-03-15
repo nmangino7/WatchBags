@@ -247,3 +247,122 @@ Respond with this exact JSON structure:
     return calculateFallbackAnalysis(itemData);
   }
 }
+
+// ============================================================================
+// Extract listing details from page content using Claude
+// ============================================================================
+
+export interface ExtractedListing {
+  brand: string;
+  model: string;
+  referenceNumber?: string;
+  askingPrice: number;
+  condition: 'mint' | 'excellent' | 'good' | 'fair';
+  seller?: string;
+  source: string;
+  category: 'watch' | 'handbag';
+  title: string;
+  description?: string;
+}
+
+export async function extractListingFromContent(
+  pageContent: string,
+  sourceUrl: string
+): Promise<ExtractedListing> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  // Determine source from URL
+  let sourceName = 'Unknown';
+  try {
+    const hostname = new URL(sourceUrl).hostname.replace('www.', '');
+    if (hostname.includes('ebay')) sourceName = 'eBay';
+    else if (hostname.includes('chrono24')) sourceName = 'Chrono24';
+    else if (hostname.includes('stockx')) sourceName = 'StockX';
+    else if (hostname.includes('vestiaire')) sourceName = 'Vestiaire';
+    else if (hostname.includes('therealreal')) sourceName = 'The RealReal';
+    else if (hostname.includes('mercari')) sourceName = 'Mercari';
+    else if (hostname.includes('poshmark')) sourceName = 'Poshmark';
+    else if (hostname.includes('facebook') || hostname.includes('fb')) sourceName = 'Facebook Marketplace';
+    else if (hostname.includes('grailed')) sourceName = 'Grailed';
+    else sourceName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1);
+  } catch {
+    // keep default
+  }
+
+  const prompt = `You are a luxury goods expert. Extract the listing details from this marketplace page content.
+
+## Page URL
+${sourceUrl}
+
+## Page Content
+${pageContent.slice(0, 12000)}
+
+## Instructions
+Extract the following details and respond ONLY with a valid JSON object (no markdown code fences, no extra text):
+
+1. **brand** (string): The brand name (e.g., "Rolex", "Hermès", "Chanel")
+2. **model** (string): The model name (e.g., "Submariner", "Birkin 25", "Classic Flap Medium")
+3. **referenceNumber** (string or null): Reference/model number if available (e.g., "126610LN")
+4. **askingPrice** (number): The asking price in USD. If the price is in another currency, convert to approximate USD.
+5. **condition** (string): One of "mint", "excellent", "good", or "fair". Infer from description if not explicitly stated.
+6. **seller** (string or null): Seller name/username if visible
+7. **category** (string): Either "watch" or "handbag"
+8. **title** (string): A clean, short title for the listing (e.g., "Rolex Submariner Date 126610LN")
+9. **description** (string or null): A brief 1-2 sentence summary of the item
+
+If you cannot determine a field, use your best judgment based on the brand and context. If the page doesn't appear to be a luxury watch or handbag listing, set brand to "Unknown".
+
+JSON format:
+{
+  "brand": "Rolex",
+  "model": "Submariner",
+  "referenceNumber": "126610LN",
+  "askingPrice": 12500,
+  "condition": "excellent",
+  "seller": "watchdealer123",
+  "category": "watch",
+  "title": "Rolex Submariner Date 126610LN",
+  "description": "2023 model with box and papers, minor desk diving marks"
+}`;
+
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const textBlock = message.content.find((block) => block.type === 'text');
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('No text content in Claude response');
+  }
+
+  let jsonText = textBlock.text.trim();
+  const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) {
+    jsonText = jsonMatch[1].trim();
+  }
+
+  const parsed = JSON.parse(jsonText);
+
+  const validConditions = ['mint', 'excellent', 'good', 'fair'];
+  const condition = validConditions.includes(parsed.condition) ? parsed.condition : 'good';
+  const category = parsed.category === 'handbag' ? 'handbag' : 'watch';
+
+  return {
+    brand: parsed.brand || 'Unknown',
+    model: parsed.model || 'Unknown',
+    referenceNumber: parsed.referenceNumber || undefined,
+    askingPrice: typeof parsed.askingPrice === 'number' ? parsed.askingPrice : 0,
+    condition,
+    seller: parsed.seller || undefined,
+    source: sourceName,
+    category,
+    title: parsed.title || `${parsed.brand} ${parsed.model}`,
+    description: parsed.description || undefined,
+  };
+}
