@@ -49,9 +49,13 @@ export class BobsProvider implements DataProvider {
       ? BOBS_CATALOG.filter((item) => brands.some((b) => b.toLowerCase() === item.brand.toLowerCase()))
       : BOBS_CATALOG;
 
+    // Pick a random subset of 4 items per scan
+    const shuffled = [...items].sort(() => Math.random() - 0.5);
+    const toScrape = shuffled.slice(0, 4);
+
     const allListings: ListingData[] = [];
 
-    for (const item of items) {
+    for (const item of toScrape) {
       try {
         const listings = await this.scrapePage(item);
         allListings.push(...listings);
@@ -59,7 +63,7 @@ export class BobsProvider implements DataProvider {
         console.error(`Bob's Watches scrape failed for ${item.model}:`, error);
       }
 
-      await delay(2000 + Math.random() * 1500);
+      await delay(800 + Math.random() * 700);
     }
 
     return allListings;

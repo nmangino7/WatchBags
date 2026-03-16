@@ -83,9 +83,13 @@ export class Chrono24Provider implements DataProvider {
       );
     }
 
+    // Pick a random subset of 5 items per scan to stay within Vercel limits
+    const shuffled = [...items].sort(() => Math.random() - 0.5);
+    const toScrape = shuffled.slice(0, 5);
+
     const allListings: ListingData[] = [];
 
-    for (const item of items) {
+    for (const item of toScrape) {
       try {
         const listings = await this.scrapeSearch(item);
         allListings.push(...listings);
@@ -93,8 +97,8 @@ export class Chrono24Provider implements DataProvider {
         console.error(`Chrono24 scrape failed for ${item.brand} ${item.model}:`, error);
       }
 
-      // Rate limit
-      await delay(2000 + Math.random() * 1500);
+      // Short delay between requests
+      await delay(800 + Math.random() * 700);
     }
 
     return allListings;

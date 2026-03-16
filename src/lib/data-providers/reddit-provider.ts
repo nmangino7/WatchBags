@@ -88,9 +88,13 @@ export class RedditProvider implements DataProvider {
       ? WATCH_CATALOG.filter((item) => brands.some((b) => b.toLowerCase() === item.brand.toLowerCase()))
       : WATCH_CATALOG;
 
+    // Pick a random subset of 5 items per scan
+    const shuffled = [...items].sort(() => Math.random() - 0.5);
+    const toScrape = shuffled.slice(0, 5);
+
     const allListings: ListingData[] = [];
 
-    for (const item of items) {
+    for (const item of toScrape) {
       try {
         const listings = await this.searchReddit(item);
         allListings.push(...listings);
@@ -98,8 +102,8 @@ export class RedditProvider implements DataProvider {
         console.error(`Reddit scrape failed for ${item.brand} ${item.model}:`, error);
       }
 
-      // Reddit rate limit: 1 request per 2 seconds
-      await delay(2000 + Math.random() * 1000);
+      // Reddit rate limit
+      await delay(1000 + Math.random() * 500);
     }
 
     return allListings;

@@ -47,6 +47,76 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
   const [result, setResult] = useState<ProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Fallback: plain JSON scan (no streaming)
+  const handleJsonScan = useCallback(async () => {
+    setCurrentStep("Scanning marketplaces (this takes 1-3 minutes)...");
+    setPhase("scraping");
+
+    // Simulate progress while waiting
+    const progressInterval = setInterval(() => {
+      setPercent((prev) => Math.min(prev + 2, 90));
+      setCurrentStep((prev) => {
+        const steps = [
+          "Scraping eBay listings...",
+          "Searching Chrono24...",
+          "Checking Bob's Watches...",
+          "Scanning Reddit r/WatchExchange...",
+          "Checking WatchCharts...",
+          "Browsing Poshmark...",
+          "Analyzing deals with Claude AI...",
+          "Processing results...",
+        ];
+        const idx = steps.indexOf(prev);
+        return steps[(idx + 1) % steps.length] || steps[0];
+      });
+    }, 4000);
+
+    try {
+      const res = await fetch("/api/cron/refresh");
+      clearInterval(progressInterval);
+
+      if (!res.ok) {
+        const text = await res.text();
+        let errorMsg: string;
+        try {
+          const json = JSON.parse(text);
+          errorMsg = json.error || `HTTP ${res.status}`;
+        } catch {
+          errorMsg = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+        }
+        setError(errorMsg);
+        return;
+      }
+
+      const data = await res.json();
+      setPercent(100);
+      setPhase("complete");
+
+      // Build events from JSON response
+      if (data.errorMessages) {
+        for (const msg of data.errorMessages) {
+          setEvents((prev) => [...prev, { type: "error", message: msg }]);
+        }
+      }
+
+      setResult({
+        type: "complete",
+        scraped: data.scraped,
+        saved: data.saved,
+        analyzed: data.analyzed,
+        errors: data.errors,
+        errorMessages: data.errorMessages,
+        providers: data.providers,
+      });
+      onComplete?.();
+    } catch (err) {
+      clearInterval(progressInterval);
+      setError(
+        `Scan failed: ${err instanceof Error ? err.message : "Network error"}. Check that the app is deployed and your API keys (ANTHROPIC_API_KEY, CRON_SECRET) are set in Vercel.`
+      );
+    }
+  }, [onComplete]);
+
   const handleScan = useCallback(async () => {
     setScanning(true);
     setEvents([]);
@@ -57,27 +127,48 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
     setError(null);
 
     try {
+      // Try SSE first for real-time progress
       const response = await fetch("/api/cron/refresh", {
         headers: { Accept: "text/event-stream" },
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg: string;
-        try {
-          const json = JSON.parse(text);
-          errorMsg = json.error || `HTTP ${response.status}`;
-        } catch {
-          errorMsg = `HTTP ${response.status}: ${text.slice(0, 200)}`;
+      const contentType = response.headers.get("content-type") || "";
+
+      // If server doesn't support SSE or returned error, fall back to JSON
+      if (!response.ok || !contentType.includes("text/event-stream")) {
+        // If it's a JSON response, parse it directly
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          if (!response.ok) {
+            setError(data.error || `HTTP ${response.status}`);
+            setScanning(false);
+            return;
+          }
+          setPercent(100);
+          setPhase("complete");
+          setResult({
+            type: "complete",
+            scraped: data.scraped,
+            saved: data.saved,
+            analyzed: data.analyzed,
+            errors: data.errors,
+            errorMessages: data.errorMessages,
+            providers: data.providers,
+          });
+          onComplete?.();
+          setScanning(false);
+          return;
         }
-        setError(errorMsg);
+        // Otherwise fall back to JSON endpoint
+        await handleJsonScan();
         setScanning(false);
         return;
       }
 
       const reader = response.body?.getReader();
       if (!reader) {
-        setError("No response stream available");
+        // Fall back to JSON scan
+        await handleJsonScan();
         setScanning(false);
         return;
       }
@@ -125,14 +216,20 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
           }
         }
       }
-    } catch (err) {
-      setError(
-        `Connection failed: ${err instanceof Error ? err.message : "Unknown error"}. Check that the app is deployed and your API keys are set.`
-      );
+    } catch {
+      // SSE failed completely — fall back to plain JSON request
+      setEvents([{ type: "status", message: "Streaming unavailable, using standard scan..." }]);
+      try {
+        await handleJsonScan();
+      } catch (err2) {
+        setError(
+          `Scan failed: ${err2 instanceof Error ? err2.message : "Network error"}. Check that the app is deployed and your API keys are set in Vercel.`
+        );
+      }
     } finally {
       setScanning(false);
     }
-  }, [onComplete]);
+  }, [onComplete, handleJsonScan]);
 
   const deals = events.filter((e) => e.type === "deal");
   const errors = events.filter((e) => e.type === "error");

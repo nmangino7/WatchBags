@@ -4,6 +4,8 @@ import { ebayProvider } from './ebay-provider';
 import { chrono24Provider } from './chrono24-provider';
 import { bobsProvider } from './bobs-provider';
 import { redditProvider } from './reddit-provider';
+import { watchChartsProvider } from './watchcharts-provider';
+import { poshmarkProvider } from './poshmark-provider';
 
 // ============================================================================
 // Provider Registry
@@ -77,6 +79,8 @@ registry.registerProvider(ebayProvider);
 registry.registerProvider(chrono24Provider);
 registry.registerProvider(bobsProvider);
 registry.registerProvider(redditProvider);
+registry.registerProvider(watchChartsProvider);
+registry.registerProvider(poshmarkProvider);
 
 export const providerRegistry = registry;
 export { ProviderRegistry };

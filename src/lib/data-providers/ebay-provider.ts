@@ -93,9 +93,14 @@ export class EbayProvider implements DataProvider {
       ? items.filter((item) => brands.some((b) => b.toLowerCase() === item.brand.toLowerCase()))
       : items;
 
+    // Pick a random subset of 5 items per scan to stay within Vercel limits
+    // Over multiple scans, all items get covered
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    const toScrape = shuffled.slice(0, 5);
+
     const allListings: ListingData[] = [];
 
-    for (const item of filtered) {
+    for (const item of toScrape) {
       try {
         const listings = await this.scrapeSearch(item);
         allListings.push(...listings);
@@ -103,8 +108,8 @@ export class EbayProvider implements DataProvider {
         console.error(`eBay scrape failed for ${item.brand} ${item.model}:`, error);
       }
 
-      // Rate limit: wait between requests
-      await delay(1500 + Math.random() * 1000);
+      // Short delay between requests
+      await delay(500 + Math.random() * 500);
     }
 
     return allListings;
