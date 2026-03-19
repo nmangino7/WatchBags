@@ -83,7 +83,7 @@ interface ProcessResult {
 }
 
 async function processListings(
-  allScraped: Array<{ brand: string; model: string; referenceNumber?: string; askingPrice: number; condition: string; seller?: string; source: string; sourceUrl: string }>,
+  allScraped: Array<{ brand: string; model: string; referenceNumber?: string; askingPrice: number; condition: string; seller?: string; source: string; sourceUrl: string; imageUrl?: string }>,
   existingUrls: Set<string>,
   onProgress?: (step: string, current: number, total: number) => void
 ): Promise<ProcessResult> {
@@ -143,6 +143,7 @@ async function processListings(
         askingPrice: scraped.askingPrice,
         condition: scraped.condition as Condition,
         seller: scraped.seller,
+        imageUrl: scraped.imageUrl,
         foundAt: new Date(),
         stillActive: true,
       };

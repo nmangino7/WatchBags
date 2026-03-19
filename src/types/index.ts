@@ -41,6 +41,7 @@ export interface Listing {
   askingPrice: number;
   condition: Condition;
   seller?: string;
+  imageUrl?: string;
   foundAt: Date;
   stillActive: boolean;
 }

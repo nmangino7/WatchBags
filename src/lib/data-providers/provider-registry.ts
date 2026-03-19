@@ -6,6 +6,9 @@ import { bobsProvider } from './bobs-provider';
 import { redditProvider } from './reddit-provider';
 import { watchChartsProvider } from './watchcharts-provider';
 import { poshmarkProvider } from './poshmark-provider';
+import { vestiaireProvider } from './vestiaire-provider';
+import { mercariProvider } from './mercari-provider';
+import { theRealRealProvider } from './therealreal-provider';
 
 // ============================================================================
 // Provider Registry
@@ -81,6 +84,9 @@ registry.registerProvider(bobsProvider);
 registry.registerProvider(redditProvider);
 registry.registerProvider(watchChartsProvider);
 registry.registerProvider(poshmarkProvider);
+registry.registerProvider(vestiaireProvider);
+registry.registerProvider(mercariProvider);
+registry.registerProvider(theRealRealProvider);
 
 export const providerRegistry = registry;
 export { ProviderRegistry };

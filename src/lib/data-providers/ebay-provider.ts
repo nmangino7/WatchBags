@@ -182,6 +182,11 @@ export class EbayProvider implements DataProvider {
           return; // skip accessories and parts
         }
 
+        // Get image
+        const imageUrl = $item.find('.s-item__image-wrapper img').attr('src')
+          || $item.find('img').first().attr('src')
+          || undefined;
+
         listings.push({
           source: 'eBay',
           sourceUrl: cleanUrl,
@@ -191,6 +196,7 @@ export class EbayProvider implements DataProvider {
           askingPrice: price,
           condition,
           seller: seller || undefined,
+          imageUrl,
         });
       } catch {
         // Skip items that fail to parse

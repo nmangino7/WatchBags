@@ -343,7 +343,7 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
-            Scraping 5 sources and analyzing with Claude AI. This takes 2-4 minutes...
+            Scraping 10 marketplaces and analyzing with Claude AI. This takes 2-4 minutes...
           </p>
         </div>
       )}
@@ -383,13 +383,13 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
 
       {/* Success State */}
       {result && !scanning && !error && (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-4">
           <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm flex items-start gap-2">
             <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0 mt-0.5" />
             <div className="text-muted-foreground">
               <p className="font-medium text-foreground">Scan Complete</p>
               <p className="mt-1">
-                Scraped {result.scraped} listings.{" "}
+                Scraped {result.scraped} listings from {result.providers?.length || 0} sources.{" "}
                 {(result.saved ?? 0) > 0 ? (
                   <span className="text-green-400 font-medium">
                     Found {result.saved} profitable deals!
@@ -401,18 +401,46 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
                   <span className="text-yellow-400">({result.errors} errors)</span>
                 )}
               </p>
+              {result.providers && (
+                <p className="mt-1 text-xs text-muted-foreground/70">
+                  Sources: {result.providers.join(" · ")}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Show found deals */}
+          {/* Show found deals as mini shopping cards */}
           {deals.length > 0 && (
-            <div className="rounded-lg border border-border bg-background/50 p-3 text-xs font-mono space-y-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {deals.map((d, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <TrendingUp className="h-3 w-3 text-green-400 shrink-0 mt-0.5" />
-                  <span className="text-green-400">
-                    {d.brand} {d.model} — ${d.price?.toLocaleString()} (est. profit: ${d.profit?.toLocaleString()}) via {d.source}
-                  </span>
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card/50 p-3 hover:border-gold/30 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gold">
+                      {d.brand}
+                    </p>
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {d.model}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm font-bold text-foreground">
+                        ${d.price?.toLocaleString()}
+                      </span>
+                      <span className={`text-xs font-medium ${
+                        (d.profit ?? 0) > 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {(d.profit ?? 0) > 0 ? '+' : ''}${d.profit?.toLocaleString()} profit
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      via {d.source}
+                    </p>
+                  </div>
+                  <TrendingUp className={`h-5 w-5 shrink-0 ${
+                    (d.profit ?? 0) > 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`} />
                 </div>
               ))}
             </div>
@@ -425,7 +453,7 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
                 {result.errors} error(s) — click to expand
               </summary>
               <div className="mt-2 rounded-lg border border-border bg-background/50 p-3 font-mono space-y-1">
-                {result.errorMessages.map((msg, i) => (
+                {result.errorMessages.map((msg: string, i: number) => (
                   <div key={i} className="text-red-400/80">{msg}</div>
                 ))}
               </div>

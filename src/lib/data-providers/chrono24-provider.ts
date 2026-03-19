@@ -158,6 +158,11 @@ export class Chrono24Provider implements DataProvider {
           return;
         }
 
+        // Image
+        const imageUrl = $item.find('img').first().attr('src')
+          || $item.find('img').first().attr('data-src')
+          || undefined;
+
         listings.push({
           source: 'Chrono24',
           sourceUrl: itemUrl,
@@ -167,6 +172,7 @@ export class Chrono24Provider implements DataProvider {
           askingPrice: price,
           condition,
           seller,
+          imageUrl,
         });
       } catch {
         // skip
@@ -181,7 +187,6 @@ export class Chrono24Provider implements DataProvider {
           const title = $link.text().trim();
           if (!title || title.length < 10) return;
 
-          // Look for price nearby
           const $parent = $link.closest('[class*="item"], [class*="result"], li, article');
           const priceText = $parent.find('[class*="price"]').text().trim();
           const price = parsePrice(priceText);
@@ -194,6 +199,10 @@ export class Chrono24Provider implements DataProvider {
 
           if (!title.toLowerCase().includes(item.brand.toLowerCase().split(' ')[0])) return;
 
+          const imageUrl = $parent.find('img').first().attr('src')
+            || $parent.find('img').first().attr('data-src')
+            || undefined;
+
           listings.push({
             source: 'Chrono24',
             sourceUrl: href,
@@ -203,6 +212,7 @@ export class Chrono24Provider implements DataProvider {
             askingPrice: price,
             condition: 'good',
             seller: undefined,
+            imageUrl,
           });
         } catch {
           // skip

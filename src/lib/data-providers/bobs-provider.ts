@@ -139,6 +139,12 @@ export class BobsProvider implements DataProvider {
         else if (titleLower.includes('excellent')) condition = 'excellent';
         else if (titleLower.includes('fair')) condition = 'fair';
 
+        // Get image
+        const imageUrl = $item.find('img').first().attr('src')
+          || $item.find('img').first().attr('data-src')
+          || $item.find('img').first().attr('data-lazy')
+          || undefined;
+
         listings.push({
           source: "Bob's Watches",
           sourceUrl: itemUrl,
@@ -148,6 +154,7 @@ export class BobsProvider implements DataProvider {
           askingPrice: price,
           condition,
           seller: "Bob's Watches",
+          imageUrl: imageUrl && !imageUrl.startsWith('http') ? `https://www.bobswatches.com${imageUrl}` : imageUrl,
         });
       } catch {
         // Skip items that fail to parse

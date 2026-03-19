@@ -10,8 +10,10 @@ import {
   MapPin,
   Calendar,
   Shield,
+  ImageOff,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default async function DealDetailPage({
   params,
@@ -72,13 +74,23 @@ export default async function DealDetailPage({
 
       {/* Header */}
       <div className="flex flex-col lg:flex-row gap-8 mb-8">
-        {/* Item image placeholder */}
-        <div className="w-full lg:w-96 h-64 lg:h-96 bg-card rounded-2xl border border-border flex items-center justify-center flex-shrink-0">
-          <div className="text-center text-muted-foreground">
-            <div className="text-5xl mb-2">{brand.category === "watch" ? "⌚" : "👜"}</div>
-            <p className="text-sm">{brand.name}</p>
-            <p className="text-xs">{model.name}</p>
-          </div>
+        {/* Item image */}
+        <div className="w-full lg:w-96 h-64 lg:h-96 bg-card rounded-2xl border border-border flex items-center justify-center flex-shrink-0 overflow-hidden relative">
+          {(listing.imageUrl || model.imageUrl) ? (
+            <Image
+              src={listing.imageUrl || model.imageUrl || ''}
+              alt={`${brand.name} ${model.name}`}
+              fill
+              className="object-contain p-4"
+              unoptimized
+            />
+          ) : (
+            <div className="text-center text-muted-foreground">
+              <ImageOff className="h-12 w-12 mx-auto mb-2 text-muted-foreground/40" />
+              <p className="text-sm">{brand.name}</p>
+              <p className="text-xs">{model.name}</p>
+            </div>
+          )}
         </div>
 
         {/* Item details */}
