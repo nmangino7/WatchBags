@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { getSeedData } from "@/lib/db/seed";
+import { useState, useEffect } from "react";
 import { formatCurrency } from "@/lib/utils";
 import {
   Link2,
@@ -14,6 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import type { Brand } from "@/types";
 
 type Tab = "url" | "manual";
 
@@ -63,7 +63,14 @@ export default function AddDealPage() {
   const [saveError, setSaveError] = useState("");
   const [saveResult, setSaveResult] = useState<SaveResult | null>(null);
 
-  const { brands } = getSeedData();
+  const [brands, setBrands] = useState<Brand[]>([]);
+
+  useEffect(() => {
+    fetch("/api/brands")
+      .then((res) => res.json())
+      .then((data) => setBrands(data.brands || []))
+      .catch(() => {});
+  }, []);
 
   const handleExtract = async () => {
     if (!url.trim()) return;

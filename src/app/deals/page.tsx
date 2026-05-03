@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { DealCard } from "@/components/DealCard";
 import { FilterBar } from "@/components/FilterBar";
 import { ScanProgress } from "@/components/ScanProgress";
-import { getSeedData } from "@/lib/db/seed";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
 import type { DealWithDetails, Category, Condition } from "@/types";
 
 interface AppliedFilters {
@@ -32,21 +31,20 @@ export default function DealsPage() {
     sort: "highest_profit",
   });
 
-  const { brands, models, listings, valuations } = getSeedData();
+  const [allDeals, setAllDeals] = useState<DealWithDetails[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const allDeals: DealWithDetails[] = useMemo(() => {
-    return listings
-      .filter((l) => l.stillActive)
-      .map((listing) => {
-        const model = models.find((m) => m.id === listing.modelId);
-        const brand = model ? brands.find((b) => b.id === model.brandId) : null;
-        const valuation = valuations.find((v) => v.listingId === listing.id);
-        if (!model || !brand || !valuation || valuation.netProfit <= 0)
-          return null;
-        return { listing, model, brand, valuation };
+  useEffect(() => {
+    fetch("/api/deals?limit=100")
+      .then((res) => res.json())
+      .then((data) => {
+        setAllDeals(data.deals || []);
       })
-      .filter((d): d is DealWithDetails => d !== null);
-  }, [brands, models, listings, valuations]);
+      .catch(() => {
+        setAllDeals([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const filteredDeals = useMemo(() => {
     let deals = [...allDeals];
@@ -69,7 +67,8 @@ export default function DealsPage() {
     }
     if (filters.minProfit) {
       const minP = parseFloat(filters.minProfit);
-      if (!isNaN(minP)) deals = deals.filter((d) => d.valuation.netProfit >= minP);
+      if (!isNaN(minP))
+        deals = deals.filter((d) => d.valuation.netProfit >= minP);
     }
     if (filters.condition !== "all") {
       deals = deals.filter((d) => d.listing.condition === filters.condition);
@@ -85,11 +84,12 @@ export default function DealsPage() {
       );
     }
 
-    // Sort
     if (filters.sort === "lowest_price") {
       deals.sort((a, b) => a.listing.askingPrice - b.listing.askingPrice);
     } else if (filters.sort === "best_roi") {
-      deals.sort((a, b) => b.valuation.roiPercentage - a.valuation.roiPercentage);
+      deals.sort(
+        (a, b) => b.valuation.roiPercentage - a.valuation.roiPercentage
+      );
     } else if (filters.sort === "newest") {
       deals.sort(
         (a, b) =>
@@ -97,7 +97,6 @@ export default function DealsPage() {
           new Date(a.listing.foundAt).getTime()
       );
     } else {
-      // highest_profit default
       deals.sort((a, b) => b.valuation.netProfit - a.valuation.netProfit);
     }
 
@@ -116,9 +115,11 @@ export default function DealsPage() {
         <div>
           <h1 className="text-3xl font-bold">Deal Finder</h1>
           <p className="text-muted-foreground mt-1">
-            {allDeals.length > 0
-              ? `Showing ${filteredDeals.length} profitable deals — only items you can make money on`
-              : "Scan marketplaces to find profitable deals"}
+            {loading
+              ? "Loading deals..."
+              : allDeals.length > 0
+                ? `Showing ${filteredDeals.length} profitable deals — only items you can make money on`
+                : "Scan marketplaces to find profitable deals"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -139,15 +140,18 @@ export default function DealsPage() {
         />
       )}
 
-      {allDeals.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-16">
+          <Loader2 className="mx-auto h-8 w-8 text-gold animate-spin mb-4" />
+          <p className="text-muted-foreground">Loading deals...</p>
+        </div>
+      ) : allDeals.length === 0 ? (
         <div className="text-center py-16">
           <Search className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground text-lg mb-2">
-            No deals yet
-          </p>
+          <p className="text-muted-foreground text-lg mb-2">No deals yet</p>
           <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
-            Click &quot;Rescan&quot; above to scrape eBay, Chrono24, Bob&apos;s Watches,
-            and Reddit for real listings, or add a deal manually.
+            Click &quot;Rescan&quot; above to scrape eBay, Chrono24, Bob&apos;s
+            Watches, and Reddit for real listings, or add a deal manually.
           </p>
         </div>
       ) : filteredDeals.length === 0 ? (

@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { providerRegistry } from '@/lib/data-providers/provider-registry';
-import { getSeedData, addListing, addValuation, addModel } from '@/lib/db/seed';
+import {
+  getAllBrands,
+  getAllModels,
+  getAllListings,
+  getListingSourceUrls,
+  insertListing,
+  insertValuation,
+  insertModel,
+  getPriceHistoryByModelId,
+  ensureSeeded,
+} from '@/lib/db/queries';
 import { analyzeItem } from '@/lib/ai/analyze';
-import type { Listing, Valuation, Condition, Confidence } from '@/types';
+import type { Listing, Valuation, Model, Condition, Confidence } from '@/types';
 
-export const maxDuration = 300; // 5 minutes max for Vercel
+export const maxDuration = 300;
 
-// Timeout wrapper — abort if a promise takes too long
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -18,8 +27,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authorization — allow same-origin requests (from the app UI)
-    // and cron requests with the secret
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
     const referer = request.headers.get('referer') || '';
@@ -27,13 +34,12 @@ export async function GET(request: NextRequest) {
     const isSameOrigin = referer.includes(host);
 
     if (cronSecret && !isSameOrigin && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if client wants streaming progress
+    // Ensure DB is seeded on first run
+    await ensureSeeded();
+
     const acceptHeader = request.headers.get('accept') || '';
     const wantsStream = acceptHeader.includes('text/event-stream');
 
@@ -51,12 +57,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ============================================================================
-// Shared scraping + analysis logic
-// ============================================================================
-
 async function scrapeAllProviders() {
-  // Run watch and handbag scraping with a 60s timeout each
   const [watchResult, handbagResult] = await Promise.allSettled([
     withTimeout(providerRegistry.fetchAllListings('watch'), 60000, 'Watch scraping'),
     withTimeout(providerRegistry.fetchAllListings('handbag'), 60000, 'Handbag scraping'),
@@ -83,15 +84,25 @@ interface ProcessResult {
 }
 
 async function processListings(
-  allScraped: Array<{ brand: string; model: string; referenceNumber?: string; askingPrice: number; condition: string; seller?: string; source: string; sourceUrl: string; imageUrl?: string }>,
+  allScraped: Array<{
+    brand: string;
+    model: string;
+    referenceNumber?: string;
+    askingPrice: number;
+    condition: string;
+    seller?: string;
+    source: string;
+    sourceUrl: string;
+    imageUrl?: string;
+  }>,
   existingUrls: Set<string>,
   onProgress?: (step: string, current: number, total: number) => void
 ): Promise<ProcessResult> {
-  const seed = getSeedData();
-  const newListings = allScraped.filter((l) => !existingUrls.has(l.sourceUrl));
+  const [brands, models] = await Promise.all([getAllBrands(), getAllModels()]);
+  const allListings = await getAllListings();
 
-  // Limit to 10 items for AI analysis to stay within Vercel timeout
-  const toProcess = newListings.slice(0, 10);
+  const newScraped = allScraped.filter((l) => !existingUrls.has(l.sourceUrl));
+  const toProcess = newScraped.slice(0, 10);
   let savedCount = 0;
   let analyzedCount = 0;
   const errors: string[] = [];
@@ -106,32 +117,35 @@ async function processListings(
     );
 
     try {
-      let matchedModel = seed.models.find((m) => {
-        const brandMatch = seed.brands.find((b) => b.id === m.brandId);
+      let matchedModel = models.find((m) => {
+        const brandMatch = brands.find((b) => b.id === m.brandId);
         if (!brandMatch) return false;
         return (
           brandMatch.name.toLowerCase() === scraped.brand.toLowerCase() &&
           (m.name.toLowerCase().includes(scraped.model.toLowerCase().split(' ')[0]) ||
-           scraped.model.toLowerCase().includes(m.name.toLowerCase().split(' ')[0]))
+            scraped.model.toLowerCase().includes(m.name.toLowerCase().split(' ')[0]))
         );
       });
 
-      const matchedBrand = seed.brands.find(
+      const matchedBrand = brands.find(
         (b) => b.name.toLowerCase() === scraped.brand.toLowerCase()
       );
 
       if (!matchedModel) {
-        const brandId = matchedBrand?.id ?? `brand-scraped-${scraped.brand.toLowerCase().replace(/\s+/g, '-')}`;
+        const brandId =
+          matchedBrand?.id ??
+          `brand-scraped-${scraped.brand.toLowerCase().replace(/\s+/g, '-')}`;
         matchedModel = {
           id: `model-scraped-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
           brandId,
           name: scraped.model,
           referenceNumber: scraped.referenceNumber,
-          msrp: scraped.askingPrice * 1.3,
-          typicalResaleLow: scraped.askingPrice * 0.85,
-          typicalResaleHigh: scraped.askingPrice * 1.25,
+          msrp: 0,
+          typicalResaleLow: 0,
+          typicalResaleHigh: 0,
         };
-        addModel(matchedModel);
+        await insertModel(matchedModel);
+        models.push(matchedModel);
       }
 
       const listingId = `lst-scraped-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -148,18 +162,16 @@ async function processListings(
         stillActive: true,
       };
 
-      addListing(newListing);
+      await insertListing(newListing);
       existingUrls.add(scraped.sourceUrl);
 
-      const comparablePrices = seed.listings
+      const comparablePrices = allListings
         .filter((l) => l.modelId === matchedModel!.id && l.id !== listingId && l.stillActive)
         .map((l) => l.askingPrice);
 
-      const recentSales = seed.priceHistory
-        .filter((p) => p.modelId === matchedModel!.id)
-        .map((p) => p.price);
+      const priceHistoryPoints = await getPriceHistoryByModelId(matchedModel.id);
+      const recentSales = priceHistoryPoints.map((p) => p.price);
 
-      // 15s timeout per AI analysis
       const analysis = await withTimeout(
         analyzeItem({
           brand: scraped.brand,
@@ -197,9 +209,15 @@ async function processListings(
         createdAt: new Date(),
       };
 
-      addValuation(valuation);
+      await insertValuation(valuation);
       savedCount++;
-      deals.push({ brand: scraped.brand, model: scraped.model, price: scraped.askingPrice, profit: netProfit, source: scraped.source });
+      deals.push({
+        brand: scraped.brand,
+        model: scraped.model,
+        price: scraped.askingPrice,
+        profit: netProfit,
+        source: scraped.source,
+      });
     } catch (error) {
       const msg = `Failed: ${scraped.brand} ${scraped.model} from ${scraped.source} — ${error instanceof Error ? error.message : 'Unknown'}`;
       console.error(msg);
@@ -209,10 +227,6 @@ async function processListings(
 
   return { savedCount, analyzedCount, errors, deals };
 }
-
-// ============================================================================
-// Streaming scan — sends real-time progress via Server-Sent Events
-// ============================================================================
 
 function handleStreamingScan() {
   const encoder = new TextEncoder();
@@ -229,22 +243,29 @@ function handleStreamingScan() {
 
       try {
         const providers = providerRegistry.getProviders();
-        send('status', { phase: 'starting', message: 'Starting scan...', providers: providers.map((p) => p.name) });
+        send('status', {
+          phase: 'starting',
+          message: 'Starting scan...',
+          providers: providers.map((p) => p.name),
+        });
 
-        const seed = getSeedData();
-        const existingUrls = new Set(seed.listings.map((l) => l.sourceUrl));
+        const existingUrls = await getListingSourceUrls();
 
-        // Phase 1: Scrape
         send('status', { phase: 'scraping', message: 'Scraping marketplaces for listings...' });
-        send('progress', { step: 'Scraping all providers in parallel...', detail: providers.map(p => p.name).join(', ') });
+        send('progress', {
+          step: 'Scraping all providers in parallel...',
+          detail: providers.map((p) => p.name).join(', '),
+        });
 
         const { watchListings, handbagListings } = await scrapeAllProviders();
 
-        send('progress', { step: `Found ${watchListings.length} watches + ${handbagListings.length} handbags`, done: true });
+        send('progress', {
+          step: `Found ${watchListings.length} watches + ${handbagListings.length} handbags`,
+          done: true,
+        });
 
         const allScraped = [...watchListings, ...handbagListings];
 
-        // Phase 2: Analyze
         send('status', {
           phase: 'analyzing',
           message: `Found ${allScraped.length} listings. Analyzing top deals with AI...`,
@@ -260,15 +281,13 @@ function handleStreamingScan() {
           });
         });
 
-        // Send found deals
         for (const deal of result.deals) {
           send('deal', deal);
         }
 
-        // Done
         send('complete', {
           scraped: allScraped.length,
-          newListings: allScraped.filter(l => !existingUrls.has(l.sourceUrl)).length,
+          newListings: allScraped.filter((l) => !existingUrls.has(l.sourceUrl)).length,
           processed: Math.min(10, allScraped.length),
           saved: result.savedCount,
           analyzed: result.analyzedCount,
@@ -283,7 +302,11 @@ function handleStreamingScan() {
           fatal: true,
         });
       } finally {
-        try { controller.close(); } catch { /* already closed */ }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       }
     },
   });
@@ -297,13 +320,8 @@ function handleStreamingScan() {
   });
 }
 
-// ============================================================================
-// Normal scan — returns JSON (for cron jobs)
-// ============================================================================
-
 async function handleNormalScan() {
-  const seed = getSeedData();
-  const existingUrls = new Set(seed.listings.map((l) => l.sourceUrl));
+  const existingUrls = await getListingSourceUrls();
 
   const { watchListings, handbagListings } = await scrapeAllProviders();
   const allScraped = [...watchListings, ...handbagListings];
@@ -315,7 +333,7 @@ async function handleNormalScan() {
   return NextResponse.json({
     refreshed: true,
     scraped: allScraped.length,
-    newListings: allScraped.filter(l => !existingUrls.has(l.sourceUrl)).length,
+    newListings: allScraped.filter((l) => !existingUrls.has(l.sourceUrl)).length,
     processed: Math.min(10, allScraped.length),
     saved: result.savedCount,
     analyzed: result.analyzedCount,

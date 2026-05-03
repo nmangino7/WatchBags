@@ -150,14 +150,11 @@ export const SOURCE_BADGE_STYLES: Record<string, string> = {
   eBay: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
   Chrono24: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   StockX: 'bg-green-500/10 text-green-400 border-green-500/20',
-  Vestiaire: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  'The RealReal': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
-  TheRealReal: 'bg-pink-500/10 text-pink-400 border-pink-500/20',
   "Bob's Watches": 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   'r/WatchExchange': 'bg-red-500/10 text-red-400 border-red-500/20',
   WatchCharts: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   Poshmark: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-  Mercari: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+  Manual: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
 };
 
 // ============================================================================

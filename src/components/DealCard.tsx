@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ExternalLink, ImageOff } from "lucide-react";
+import { ExternalLink, ImageOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, getConditionLabel } from "@/lib/utils";
 import { ProfitBadge } from "@/components/ProfitBadge";
@@ -112,6 +112,12 @@ export function DealCard({ deal }: DealCardProps) {
               {valuation.confidence}
             </span>
           </div>
+          {model.msrp === 0 && (
+            <div className="flex items-center gap-0.5 rounded-md bg-amber-500/10 px-1.5 py-0.5">
+              <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
+              <span className="text-[10px] font-medium text-amber-400">Needs Review</span>
+            </div>
+          )}
           <span className="text-[10px] text-muted-foreground/60">
             {valuation.roiPercentage > 0 ? `+${valuation.roiPercentage.toFixed(0)}% ROI` : ""}
           </span>

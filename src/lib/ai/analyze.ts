@@ -38,11 +38,11 @@ interface ClaudeAnalysisResponse {
 
 export function calculateFallbackAnalysis(input: AnalyzeItemInput): AiAnalysis {
   const allPrices = [...input.comparablePrices, ...input.recentSales];
+  const msrpUnknown = input.msrp === 0;
 
   let fairMarketValue: number;
   if (allPrices.length > 0) {
     const sorted = [...allPrices].sort((a, b) => a - b);
-    // Use trimmed mean: drop lowest and highest if we have enough data
     const trimmed =
       sorted.length >= 4
         ? sorted.slice(1, sorted.length - 1)
@@ -50,10 +50,12 @@ export function calculateFallbackAnalysis(input: AnalyzeItemInput): AiAnalysis {
     fairMarketValue = Math.round(
       trimmed.reduce((sum, p) => sum + p, 0) / trimmed.length
     );
-  } else {
+  } else if (!msrpUnknown && input.typicalResaleLow > 0) {
     fairMarketValue = Math.round(
       (input.typicalResaleLow + input.typicalResaleHigh) / 2
     );
+  } else {
+    fairMarketValue = input.askingPrice;
   }
 
   const grossProfit = fairMarketValue - input.askingPrice;
@@ -66,9 +68,10 @@ export function calculateFallbackAnalysis(input: AnalyzeItemInput): AiAnalysis {
       : 0;
   const roi = `${roiNumber}%`;
 
-  // Determine confidence based on data availability
   let confidence: Confidence;
-  if (allPrices.length >= 6) {
+  if (msrpUnknown) {
+    confidence = 'low';
+  } else if (allPrices.length >= 6) {
     confidence = 'high';
   } else if (allPrices.length >= 3) {
     confidence = 'medium';
@@ -152,6 +155,8 @@ export async function analyzeItem(itemData: AnalyzeItemInput): Promise<AiAnalysi
 
   const client = new Anthropic({ apiKey });
 
+  const msrpUnknown = itemData.msrp === 0;
+
   const prompt = `You are a luxury goods pricing expert specializing in watches and handbags for the resale market. Analyze the following item and provide a fair market value assessment.
 
 ## Item Details
@@ -162,8 +167,8 @@ ${itemData.referenceNumber ? `- **Reference Number:** ${itemData.referenceNumber
 - **Condition:** ${itemData.condition}
 
 ## Market Data
-- **MSRP:** $${itemData.msrp.toLocaleString()}
-- **Typical Resale Range:** $${itemData.typicalResaleLow.toLocaleString()} - $${itemData.typicalResaleHigh.toLocaleString()}
+${msrpUnknown ? '- **MSRP:** Unknown — estimate fair market value from comparables and your knowledge only. You MUST set confidence to "low" when MSRP is unknown.' : `- **MSRP:** $${itemData.msrp.toLocaleString()}`}
+${msrpUnknown ? '- **Typical Resale Range:** Unknown' : `- **Typical Resale Range:** $${itemData.typicalResaleLow.toLocaleString()} - $${itemData.typicalResaleHigh.toLocaleString()}`}
 - **Comparable Listing Prices:** ${itemData.comparablePrices.length > 0 ? itemData.comparablePrices.map((p) => `$${p.toLocaleString()}`).join(', ') : 'No data'}
 - **Recent Sold Prices:** ${itemData.recentSales.length > 0 ? itemData.recentSales.map((p) => `$${p.toLocaleString()}`).join(', ') : 'No data'}
 

@@ -1,10 +1,8 @@
-"use client";
-
 import Link from "next/link";
 import { StatsCard } from "@/components/StatsCard";
 import { DealCard } from "@/components/DealCard";
 import { ScanProgress } from "@/components/ScanProgress";
-import { getSeedData } from "@/lib/db/seed";
+import { getDealsWithDetails } from "@/lib/db/queries";
 import { formatCurrency } from "@/lib/utils";
 import {
   TrendingUp,
@@ -16,32 +14,21 @@ import {
   Search,
 } from "lucide-react";
 
-export default function Dashboard() {
-  const { brands, models, listings, valuations } = getSeedData();
+export const dynamic = "force-dynamic";
 
-  const dealsWithDetails = listings
-    .filter((l) => l.stillActive)
-    .map((listing) => {
-      const model = models.find((m) => m.id === listing.modelId);
-      const brand = model ? brands.find((b) => b.id === model.brandId) : null;
-      const valuation = valuations.find((v) => v.listingId === listing.id);
-      if (!model || !brand || !valuation || valuation.netProfit <= 0)
-        return null;
-      return { listing, model, brand, valuation };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b!.valuation.netProfit - a!.valuation.netProfit);
+export default async function Dashboard() {
+  const dealsWithDetails = await getDealsWithDetails();
 
   const totalDeals = dealsWithDetails.length;
   const totalPotentialProfit = dealsWithDetails.reduce(
-    (sum, d) => sum + d!.valuation.netProfit,
+    (sum, d) => sum + d.valuation.netProfit,
     0
   );
   const watchDeals = dealsWithDetails.filter(
-    (d) => d!.brand.category === "watch"
+    (d) => d.brand.category === "watch"
   ).length;
   const bagDeals = dealsWithDetails.filter(
-    (d) => d!.brand.category === "handbag"
+    (d) => d.brand.category === "handbag"
   ).length;
 
   const isEmpty = totalDeals === 0;
@@ -51,8 +38,7 @@ export default function Dashboard() {
       {/* Hero Section */}
       <div className="mb-8">
         <h1 className="text-3xl sm:text-4xl font-bold">
-          Welcome to{" "}
-          <span className="text-gold">WatchBags</span>
+          Welcome to <span className="text-gold">WatchBags</span>
         </h1>
         <p className="mt-2 text-muted-foreground text-lg">
           Your AI-powered luxury resale intelligence platform
@@ -134,15 +120,7 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {dealsWithDetails.slice(0, 6).map((deal) => (
-              <DealCard
-                key={deal!.listing.id}
-                deal={{
-                  listing: deal!.listing,
-                  model: deal!.model,
-                  brand: deal!.brand,
-                  valuation: deal!.valuation,
-                }}
-              />
+              <DealCard key={deal.listing.id} deal={deal} />
             ))}
           </div>
         </div>

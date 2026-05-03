@@ -1,16 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TrendChart } from "@/components/TrendChart";
-import { getSeedData } from "@/lib/db/seed";
 import { formatCurrency } from "@/lib/utils";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import type { Brand, Model, PriceHistoryPoint, TrendDataPoint } from "@/types";
 
 export default function TrendsPage() {
-  const { brands, models, priceHistory } = getSeedData();
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<
     "all" | "watch" | "handbag"
   >("all");
+
+  useEffect(() => {
+    fetch("/api/trends")
+      .then((res) => res.json())
+      .then((data) => {
+        setBrands(data.brands || []);
+        setModels(data.models || []);
+        setPriceHistory(data.priceHistory || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const filteredBrands =
     selectedCategory === "all"
@@ -40,8 +55,11 @@ export default function TrendsPage() {
         olderPrices.reduce((s, p) => s + p.price, 0) / olderPrices.length;
       const change = ((avgRecent - avgOlder) / avgOlder) * 100;
 
-      const chartData = sorted.map((p) => ({
-        date: typeof p.recordedAt === "string" ? p.recordedAt : p.recordedAt.toISOString(),
+      const chartData: TrendDataPoint[] = sorted.map((p) => ({
+        date:
+          typeof p.recordedAt === "string"
+            ? p.recordedAt
+            : new Date(p.recordedAt).toISOString(),
         value: p.price,
         label: brand.name,
       }));
@@ -66,7 +84,6 @@ export default function TrendsPage() {
         </p>
       </div>
 
-      {/* Category Filter */}
       <div className="flex gap-2 mb-6">
         {(["all", "watch", "handbag"] as const).map((cat) => (
           <button
@@ -83,47 +100,54 @@ export default function TrendsPage() {
         ))}
       </div>
 
-      {/* Market Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {brandTrends.map((trend) => (
-          <div
-            key={trend!.brand.id}
-            className="bg-card border border-border rounded-2xl p-6"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold">{trend!.brand.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {trend!.modelCount} models tracked &middot; Avg{" "}
-                  {formatCurrency(trend!.avgPrice)}
-                </p>
-              </div>
-              <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium ${
-                  trend!.change >= 0
-                    ? "bg-profit-green/10 text-profit-green"
-                    : "bg-loss-red/10 text-loss-red"
-                }`}
-              >
-                {trend!.change >= 0 ? (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                ) : (
-                  <TrendingDown className="w-3.5 h-3.5" />
-                )}
-                {Math.abs(trend!.change).toFixed(1)}%
-              </div>
-            </div>
-            <TrendChart
-              data={trend!.chartData}
-              title={trend!.brand.name}
-            />
-          </div>
-        ))}
-      </div>
-
-      {brandTrends.length === 0 && (
+      {loading ? (
+        <div className="text-center py-16">
+          <Loader2 className="mx-auto h-8 w-8 text-gold animate-spin mb-4" />
+          <p className="text-muted-foreground">Loading trends...</p>
+        </div>
+      ) : brandTrends.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
-          No trend data available for this category yet.
+          <p className="text-lg mb-2">No trend data available yet</p>
+          <p className="text-sm">
+            Price history builds up as you scan for deals. Run a few scans to
+            start seeing trends.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {brandTrends.map((trend) => (
+            <div
+              key={trend!.brand.id}
+              className="bg-card border border-border rounded-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {trend!.brand.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {trend!.modelCount} models tracked &middot; Avg{" "}
+                    {formatCurrency(trend!.avgPrice)}
+                  </p>
+                </div>
+                <div
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium ${
+                    trend!.change >= 0
+                      ? "bg-profit-green/10 text-profit-green"
+                      : "bg-loss-red/10 text-loss-red"
+                  }`}
+                >
+                  {trend!.change >= 0 ? (
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5" />
+                  )}
+                  {Math.abs(trend!.change).toFixed(1)}%
+                </div>
+              </div>
+              <TrendChart data={trend!.chartData} title={trend!.brand.name} />
+            </div>
+          ))}
         </div>
       )}
     </div>

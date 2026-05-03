@@ -1,27 +1,17 @@
 import type { DataProvider, ListingData, PriceDataPoint } from './types';
-import { mockProvider } from './mock-provider';
 import { ebayProvider } from './ebay-provider';
 import { chrono24Provider } from './chrono24-provider';
 import { bobsProvider } from './bobs-provider';
 import { redditProvider } from './reddit-provider';
 import { watchChartsProvider } from './watchcharts-provider';
 import { poshmarkProvider } from './poshmark-provider';
-import { vestiaireProvider } from './vestiaire-provider';
-import { mercariProvider } from './mercari-provider';
-import { theRealRealProvider } from './therealreal-provider';
-
-// ============================================================================
-// Provider Registry
-// ============================================================================
 
 class ProviderRegistry {
   private providers: DataProvider[] = [];
 
   registerProvider(provider: DataProvider): void {
     const existing = this.providers.find((p) => p.name === provider.name);
-    if (existing) {
-      return;
-    }
+    if (existing) return;
     this.providers.push(provider);
   }
 
@@ -72,21 +62,13 @@ class ProviderRegistry {
   }
 }
 
-// ============================================================================
-// Singleton with default mock provider
-// ============================================================================
-
 const registry = new ProviderRegistry();
-registry.registerProvider(mockProvider);
 registry.registerProvider(ebayProvider);
 registry.registerProvider(chrono24Provider);
 registry.registerProvider(bobsProvider);
 registry.registerProvider(redditProvider);
 registry.registerProvider(watchChartsProvider);
 registry.registerProvider(poshmarkProvider);
-registry.registerProvider(vestiaireProvider);
-registry.registerProvider(mercariProvider);
-registry.registerProvider(theRealRealProvider);
 
 export const providerRegistry = registry;
 export { ProviderRegistry };

@@ -1,74 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSeedData } from '@/lib/db/seed';
+import {
+  getWatchlistItems,
+  insertWatchlistItem,
+  deleteWatchlistItem,
+  getWatchlistItemByListingId,
+  getListingById,
+  getAllModels,
+  getAllBrands,
+  getAllValuations,
+} from '@/lib/db/queries';
 import type { WatchlistItem } from '@/types';
-
-// In-memory store initialized from seed data
-let watchlistItems: WatchlistItem[] | null = null;
-
-function getWatchlist(): WatchlistItem[] {
-  if (watchlistItems === null) {
-    watchlistItems = [...getSeedData().watchlistItems];
-  }
-  return watchlistItems;
-}
 
 export async function GET() {
   try {
-    const watchlist = getWatchlist();
-    const seed = getSeedData();
+    const [items, models, brands, valuations] = await Promise.all([
+      getWatchlistItems(),
+      getAllModels(),
+      getAllBrands(),
+      getAllValuations(),
+    ]);
 
-    // Enrich watchlist items with listing, model, and brand details
-    const enriched = watchlist.map((item) => {
-      const listing = seed.listings.find((l) => l.id === item.listingId);
-      const model = listing
-        ? seed.models.find((m) => m.id === listing.modelId)
-        : undefined;
-      const brand = model
-        ? seed.brands.find((b) => b.id === model.brandId)
-        : undefined;
-      const valuation = seed.valuations.find(
-        (v) => v.listingId === item.listingId
-      );
+    const enriched = await Promise.all(
+      items.map(async (item) => {
+        const listing = await getListingById(item.listingId);
+        const model = listing ? models.find((m) => m.id === listing.modelId) : undefined;
+        const brand = model ? brands.find((b) => b.id === model.brandId) : undefined;
+        const valuation = valuations.find((v) => v.listingId === item.listingId);
 
-      return {
-        ...item,
-        listing: listing
-          ? {
-              id: listing.id,
-              source: listing.source,
-              sourceUrl: listing.sourceUrl,
-              askingPrice: listing.askingPrice,
-              condition: listing.condition,
-              stillActive: listing.stillActive,
-            }
-          : null,
-        model: model
-          ? {
-              id: model.id,
-              name: model.name,
-              referenceNumber: model.referenceNumber,
-              imageUrl: model.imageUrl,
-            }
-          : null,
-        brand: brand ? { id: brand.id, name: brand.name } : null,
-        valuation: valuation
-          ? {
-              fairMarketValue: valuation.fairMarketValue,
-              confidence: valuation.confidence,
-              netProfit: valuation.netProfit,
-              roiPercentage: valuation.roiPercentage,
-            }
-          : null,
-      };
-    });
+        return {
+          ...item,
+          listing: listing
+            ? {
+                id: listing.id,
+                source: listing.source,
+                sourceUrl: listing.sourceUrl,
+                askingPrice: listing.askingPrice,
+                condition: listing.condition,
+                stillActive: listing.stillActive,
+                imageUrl: listing.imageUrl,
+              }
+            : null,
+          model: model
+            ? {
+                id: model.id,
+                name: model.name,
+                referenceNumber: model.referenceNumber,
+                imageUrl: model.imageUrl,
+              }
+            : null,
+          brand: brand ? { id: brand.id, name: brand.name } : null,
+          valuation: valuation
+            ? {
+                fairMarketValue: valuation.fairMarketValue,
+                confidence: valuation.confidence,
+                netProfit: valuation.netProfit,
+                roiPercentage: valuation.roiPercentage,
+              }
+            : null,
+        };
+      })
+    );
 
     return NextResponse.json({ watchlist: enriched });
   } catch (error) {
     console.error('Watchlist GET error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error fetching watchlist' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error fetching watchlist' }, { status: 500 });
   }
 }
 
@@ -82,26 +78,15 @@ export async function POST(request: NextRequest) {
     };
 
     if (!listingId) {
-      return NextResponse.json(
-        { error: 'Missing required field: listingId' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required field: listingId' }, { status: 400 });
     }
 
-    // Verify listing exists
-    const seed = getSeedData();
-    const listing = seed.listings.find((l) => l.id === listingId);
+    const listing = await getListingById(listingId);
     if (!listing) {
-      return NextResponse.json(
-        { error: `Listing with id "${listingId}" not found` },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: `Listing with id "${listingId}" not found` }, { status: 404 });
     }
 
-    const watchlist = getWatchlist();
-
-    // Check for duplicates
-    const existing = watchlist.find((w) => w.listingId === listingId);
+    const existing = await getWatchlistItemByListingId(listingId);
     if (existing) {
       return NextResponse.json(
         { error: 'Item is already on your watchlist', item: existing },
@@ -117,13 +102,11 @@ export async function POST(request: NextRequest) {
       addedAt: new Date(),
     };
 
-    watchlist.push(newItem);
+    await insertWatchlistItem(newItem);
 
-    // Enrich the response
-    const model = seed.models.find((m) => m.id === listing.modelId);
-    const brand = model
-      ? seed.brands.find((b) => b.id === model.brandId)
-      : undefined;
+    const [models, brands] = await Promise.all([getAllModels(), getAllBrands()]);
+    const model = models.find((m) => m.id === listing.modelId);
+    const brand = model ? brands.find((b) => b.id === model.brandId) : undefined;
 
     return NextResponse.json(
       {
@@ -137,13 +120,7 @@ export async function POST(request: NextRequest) {
             condition: listing.condition,
             stillActive: listing.stillActive,
           },
-          model: model
-            ? {
-                id: model.id,
-                name: model.name,
-                referenceNumber: model.referenceNumber,
-              }
-            : null,
+          model: model ? { id: model.id, name: model.name, referenceNumber: model.referenceNumber } : null,
           brand: brand ? { id: brand.id, name: brand.name } : null,
         },
       },
@@ -151,10 +128,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('Watchlist POST error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error adding to watchlist' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error adding to watchlist' }, { status: 500 });
   }
 }
 
@@ -164,33 +138,17 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'Missing required query parameter: id' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required query parameter: id' }, { status: 400 });
     }
 
-    const watchlist = getWatchlist();
-    const index = watchlist.findIndex((w) => w.id === id);
-
-    if (index === -1) {
-      return NextResponse.json(
-        { error: `Watchlist item with id "${id}" not found` },
-        { status: 404 }
-      );
+    const removed = await deleteWatchlistItem(id);
+    if (!removed) {
+      return NextResponse.json({ error: `Watchlist item with id "${id}" not found` }, { status: 404 });
     }
 
-    const removed = watchlist.splice(index, 1)[0];
-
-    return NextResponse.json({
-      removed,
-      message: 'Item removed from watchlist',
-    });
+    return NextResponse.json({ message: 'Item removed from watchlist' });
   } catch (error) {
     console.error('Watchlist DELETE error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error removing from watchlist' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error removing from watchlist' }, { status: 500 });
   }
 }

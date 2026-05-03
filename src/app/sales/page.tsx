@@ -1,6 +1,6 @@
 "use client";
 
-import { getSeedData } from "@/lib/db/seed";
+import { useState, useEffect } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { StatsCard } from "@/components/StatsCard";
 import {
@@ -8,30 +8,48 @@ import {
   TrendingUp,
   BarChart3,
   Calendar,
+  Loader2,
 } from "lucide-react";
 
+interface SoldItem {
+  id: string;
+  purchasePrice: number;
+  salePrice: number;
+  saleDate: string;
+  platform?: string;
+  model?: { name: string } | null;
+  brand?: { name: string } | null;
+  profit: number;
+  roi: number;
+}
+
 export default function SalesPage() {
-  const { inventoryItems, models, brands } = getSeedData();
+  const [soldItems, setSoldItems] = useState<SoldItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const soldItems = inventoryItems
-    .filter((i) => i.status === "sold" && i.salePrice)
-    .map((item) => {
-      const model = models.find((m) => m.id === item.modelId);
-      const brand = model ? brands.find((b) => b.id === model.brandId) : null;
-      const profit = (item.salePrice || 0) - item.purchasePrice;
-      const roi = (profit / item.purchasePrice) * 100;
-      return { ...item, model, brand, profit, roi };
-    })
-    .sort(
-      (a, b) =>
-        new Date(b.saleDate || 0).getTime() -
-        new Date(a.saleDate || 0).getTime()
-    );
+  useEffect(() => {
+    fetch("/api/inventory")
+      .then((res) => res.json())
+      .then((data) => {
+        const items = (data.inventory || [])
+          .filter((i: { status: string; salePrice?: number }) => i.status === "sold" && i.salePrice)
+          .map((item: { id: string; purchasePrice: number; salePrice: number; saleDate: string; platform?: string; model?: { name: string } | null; brand?: { name: string } | null }) => {
+            const profit = item.salePrice - item.purchasePrice;
+            const roi = (profit / item.purchasePrice) * 100;
+            return { ...item, profit, roi };
+          })
+          .sort(
+            (a: SoldItem, b: SoldItem) =>
+              new Date(b.saleDate || 0).getTime() -
+              new Date(a.saleDate || 0).getTime()
+          );
+        setSoldItems(items);
+      })
+      .catch(() => setSoldItems([]))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const totalRevenue = soldItems.reduce(
-    (sum, i) => sum + (i.salePrice || 0),
-    0
-  );
+  const totalRevenue = soldItems.reduce((sum, i) => sum + i.salePrice, 0);
   const totalCost = soldItems.reduce((sum, i) => sum + i.purchasePrice, 0);
   const totalProfit = totalRevenue - totalCost;
   const avgRoi =
@@ -79,7 +97,6 @@ export default function SalesPage() {
         />
       </div>
 
-      {/* Sales Table */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold">Sales History</h2>
@@ -98,58 +115,13 @@ export default function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {soldItems.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="font-medium">
-                        {item.brand?.name ?? "Unknown"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.model?.name ?? "Unknown"}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {formatCurrency(item.purchasePrice)}
-                  </td>
-                  <td className="px-6 py-4 font-medium">
-                    {formatCurrency(item.salePrice || 0)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={
-                        item.profit >= 0
-                          ? "text-profit-green font-medium"
-                          : "text-loss-red font-medium"
-                      }
-                    >
-                      {item.profit >= 0 ? "+" : ""}
-                      {formatCurrency(item.profit)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`text-sm font-medium ${
-                        item.roi >= 0 ? "text-profit-green" : "text-loss-red"
-                      }`}
-                    >
-                      {item.roi >= 0 ? "+" : ""}
-                      {item.roi.toFixed(1)}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {item.platform || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {item.saleDate ? formatDate(item.saleDate) : "N/A"}
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <Loader2 className="mx-auto h-6 w-6 text-gold animate-spin" />
                   </td>
                 </tr>
-              ))}
-              {soldItems.length === 0 && (
+              ) : soldItems.length === 0 ? (
                 <tr>
                   <td
                     colSpan={7}
@@ -158,6 +130,58 @@ export default function SalesPage() {
                     No sales recorded yet. Mark items as sold in your inventory.
                   </td>
                 </tr>
+              ) : (
+                soldItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
+                  >
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium">
+                          {item.brand?.name ?? "Unknown"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.model?.name ?? "Unknown"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {formatCurrency(item.purchasePrice)}
+                    </td>
+                    <td className="px-6 py-4 font-medium">
+                      {formatCurrency(item.salePrice)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={
+                          item.profit >= 0
+                            ? "text-profit-green font-medium"
+                            : "text-loss-red font-medium"
+                        }
+                      >
+                        {item.profit >= 0 ? "+" : ""}
+                        {formatCurrency(item.profit)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`text-sm font-medium ${
+                          item.roi >= 0 ? "text-profit-green" : "text-loss-red"
+                        }`}
+                      >
+                        {item.roi >= 0 ? "+" : ""}
+                        {item.roi.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {item.platform || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {item.saleDate ? formatDate(item.saleDate) : "N/A"}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

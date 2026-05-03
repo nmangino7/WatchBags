@@ -1,4 +1,11 @@
-import { getSeedData } from "@/lib/db/seed";
+import {
+  getListingById,
+  getAllModels,
+  getAllBrands,
+  getValuationByListingId,
+  getPriceHistoryByModelId,
+  getListingsByModelId,
+} from "@/lib/db/queries";
 import { ValuationProof } from "@/components/ValuationProof";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { PriceChart } from "@/components/PriceChart";
@@ -11,9 +18,14 @@ import {
   Calendar,
   Shield,
   ImageOff,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { WatchlistButton } from "@/components/WatchlistButton";
+import { BuyButton } from "@/components/BuyButton";
+
+export const dynamic = "force-dynamic";
 
 export default async function DealDetailPage({
   params,
@@ -21,30 +33,44 @@ export default async function DealDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { brands, models, listings, valuations, priceHistory } = getSeedData();
 
-  const listing = listings.find((l) => l.id === id);
+  const listing = await getListingById(id);
   if (!listing) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
         <h1 className="text-2xl font-bold">Deal not found</h1>
-        <Link href="/deals" className="text-gold hover:text-gold-light mt-4 inline-block">
+        <Link
+          href="/deals"
+          className="text-gold hover:text-gold-light mt-4 inline-block"
+        >
           Back to deals
         </Link>
       </div>
     );
   }
 
+  const [models, brands, valuation, modelPriceHistory, modelListings] =
+    await Promise.all([
+      getAllModels(),
+      getAllBrands(),
+      getValuationByListingId(listing.id),
+      getPriceHistoryByModelId(listing.modelId),
+      getListingsByModelId(listing.modelId),
+    ]);
+
   const model = models.find((m) => m.id === listing.modelId)!;
   const brand = brands.find((b) => b.id === model.brandId)!;
-  const valuation = valuations.find((v) => v.listingId === listing.id);
-  const modelPriceHistory = priceHistory
-    .filter((p) => p.modelId === model.id)
-    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
-  const comparablePrices = listings
-    .filter((l) => l.modelId === model.id && l.id !== listing.id)
+  const sortedPriceHistory = modelPriceHistory.sort(
+    (a, b) =>
+      new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+  );
+
+  const comparablePrices = modelListings
+    .filter((l) => l.id !== listing.id)
     .map((l) => l.askingPrice);
+
+  const msrpUnknown = model.msrp === 0;
 
   const aiAnalysis = valuation
     ? {
@@ -76,9 +102,9 @@ export default async function DealDetailPage({
       <div className="flex flex-col lg:flex-row gap-8 mb-8">
         {/* Item image */}
         <div className="w-full lg:w-96 h-64 lg:h-96 bg-card rounded-2xl border border-border flex items-center justify-center flex-shrink-0 overflow-hidden relative">
-          {(listing.imageUrl || model.imageUrl) ? (
+          {listing.imageUrl || model.imageUrl ? (
             <Image
-              src={listing.imageUrl || model.imageUrl || ''}
+              src={listing.imageUrl || model.imageUrl || ""}
               alt={`${brand.name} ${model.name}`}
               fill
               className="object-contain p-4"
@@ -116,6 +142,23 @@ export default async function DealDetailPage({
             )}
           </div>
 
+          {msrpUnknown && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-sm text-amber-400">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                MSRP unknown for this model — profit estimate is AI-generated
+                and may be less accurate.
+              </span>
+            </div>
+          )}
+
+          {valuation && valuation.confidence === "low" && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>Low confidence — limited comparable data. Verify before buying.</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
             <div className="p-3 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground">Asking Price</p>
@@ -135,7 +178,9 @@ export default async function DealDetailPage({
             )}
             <div className="p-3 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground">MSRP</p>
-              <p className="text-xl font-bold">{formatCurrency(model.msrp)}</p>
+              <p className="text-xl font-bold">
+                {msrpUnknown ? "Unknown" : formatCurrency(model.msrp)}
+              </p>
             </div>
             <div className="p-3 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground">Condition</p>
@@ -160,14 +205,18 @@ export default async function DealDetailPage({
             )}
           </div>
 
-          <a
-            href={listing.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-lg bg-gold text-black font-medium hover:bg-gold-light transition-colors"
-          >
-            View Original Listing <ExternalLink className="w-4 h-4" />
-          </a>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <a
+              href={listing.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gold text-black font-medium hover:bg-gold-light transition-colors"
+            >
+              View Original Listing <ExternalLink className="w-4 h-4" />
+            </a>
+            <WatchlistButton listingId={listing.id} />
+            <BuyButton listingId={listing.id} modelId={listing.modelId} askingPrice={listing.askingPrice} condition={listing.condition} />
+          </div>
         </div>
       </div>
 
@@ -177,8 +226,10 @@ export default async function DealDetailPage({
         <div className="bg-card border border-border rounded-2xl p-6">
           <h2 className="text-xl font-semibold mb-4">Price History</h2>
           <PriceChart
-            priceHistory={modelPriceHistory}
-            fairMarketValue={valuation?.fairMarketValue ?? model.typicalResaleHigh}
+            priceHistory={sortedPriceHistory}
+            fairMarketValue={
+              valuation?.fairMarketValue ?? model.typicalResaleHigh
+            }
           />
         </div>
 
@@ -203,7 +254,7 @@ export default async function DealDetailPage({
             <ValuationProof
               valuation={valuation}
               comparablePrices={comparablePrices.map((price, i) => ({
-                source: ["eBay", "Chrono24", "StockX", "Vestiaire"][i % 4],
+                source: ["eBay", "Chrono24", "StockX", "Poshmark"][i % 4],
                 price,
                 condition: listing.condition,
               }))}
