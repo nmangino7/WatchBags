@@ -7,12 +7,11 @@ import {
   getListingSourceUrls,
   insertListing,
   insertValuation,
-  insertModel,
   getPriceHistoryByModelId,
   ensureSeeded,
 } from '@/lib/db/queries';
 import { analyzeItem } from '@/lib/ai/analyze';
-import type { Listing, Valuation, Model, Condition, Confidence } from '@/types';
+import type { Listing, Valuation, Condition, Confidence } from '@/types';
 
 export const maxDuration = 300;
 
@@ -79,6 +78,7 @@ async function scrapeAllProviders() {
 interface ProcessResult {
   savedCount: number;
   analyzedCount: number;
+  skippedUnknown: number;
   errors: string[];
   deals: Array<{ brand: string; model: string; price: number; profit: number; source: string }>;
 }
@@ -105,6 +105,7 @@ async function processListings(
   const toProcess = newScraped.slice(0, 10);
   let savedCount = 0;
   let analyzedCount = 0;
+  let skippedUnknown = 0;
   const errors: string[] = [];
   const deals: ProcessResult['deals'] = [];
 
@@ -117,7 +118,7 @@ async function processListings(
     );
 
     try {
-      let matchedModel = models.find((m) => {
+      const matchedModel = models.find((m) => {
         const brandMatch = brands.find((b) => b.id === m.brandId);
         if (!brandMatch) return false;
         return (
@@ -127,25 +128,9 @@ async function processListings(
         );
       });
 
-      const matchedBrand = brands.find(
-        (b) => b.name.toLowerCase() === scraped.brand.toLowerCase()
-      );
-
       if (!matchedModel) {
-        const brandId =
-          matchedBrand?.id ??
-          `brand-scraped-${scraped.brand.toLowerCase().replace(/\s+/g, '-')}`;
-        matchedModel = {
-          id: `model-scraped-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-          brandId,
-          name: scraped.model,
-          referenceNumber: scraped.referenceNumber,
-          msrp: 0,
-          typicalResaleLow: 0,
-          typicalResaleHigh: 0,
-        };
-        await insertModel(matchedModel);
-        models.push(matchedModel);
+        skippedUnknown++;
+        continue;
       }
 
       const listingId = `lst-scraped-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -166,7 +151,7 @@ async function processListings(
       existingUrls.add(scraped.sourceUrl);
 
       const comparablePrices = allListings
-        .filter((l) => l.modelId === matchedModel!.id && l.id !== listingId && l.stillActive)
+        .filter((l) => l.modelId === matchedModel.id && l.id !== listingId && l.stillActive)
         .map((l) => l.askingPrice);
 
       const priceHistoryPoints = await getPriceHistoryByModelId(matchedModel.id);
@@ -225,7 +210,7 @@ async function processListings(
     }
   }
 
-  return { savedCount, analyzedCount, errors, deals };
+  return { savedCount, analyzedCount, skippedUnknown, errors, deals };
 }
 
 function handleStreamingScan() {
@@ -291,6 +276,7 @@ function handleStreamingScan() {
           processed: Math.min(10, allScraped.length),
           saved: result.savedCount,
           analyzed: result.analyzedCount,
+          skippedUnknown: result.skippedUnknown,
           errors: result.errors.length,
           errorMessages: result.errors,
           providers: providers.map((p) => p.name),
@@ -337,6 +323,7 @@ async function handleNormalScan() {
     processed: Math.min(10, allScraped.length),
     saved: result.savedCount,
     analyzed: result.analyzedCount,
+    skippedUnknown: result.skippedUnknown,
     errors: result.errors.length,
     errorMessages: result.errors.slice(0, 10),
     timestamp: new Date().toISOString(),

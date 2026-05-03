@@ -26,6 +26,7 @@ interface ProgressEvent {
   scraped?: number;
   saved?: number;
   analyzed?: number;
+  skippedUnknown?: number;
   errors?: number;
   errorMessages?: string[];
   fatal?: boolean;
@@ -104,6 +105,7 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
         scraped: data.scraped,
         saved: data.saved,
         analyzed: data.analyzed,
+        skippedUnknown: data.skippedUnknown,
         errors: data.errors,
         errorMessages: data.errorMessages,
         providers: data.providers,
@@ -396,6 +398,11 @@ export function ScanProgress({ variant = "large", onComplete }: ScanProgressProp
                   </span>
                 ) : (
                   "No profitable deals found this round."
+                )}{" "}
+                {(result.skippedUnknown ?? 0) > 0 && (
+                  <span className="text-muted-foreground/70">
+                    ({result.skippedUnknown} skipped — unknown model)
+                  </span>
                 )}{" "}
                 {(result.errors ?? 0) > 0 && (
                   <span className="text-yellow-400">({result.errors} errors)</span>
